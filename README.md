@@ -1,6 +1,5 @@
-# WinAFL
+WinAFL
 
-```
    Original AFL code written by Michal Zalewski <lcamtuf@google.com>
 
    Windows fork written and maintained by Ivan Fratric <ifratric@google.com>
@@ -18,102 +17,62 @@
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
-```
+背景
 
-## Background
+AFL是覆盖引导模糊测试的流行模糊工具。该工具将快速目标执行与智能启发式相结合，以在目标二进制文件中查找新的执行路径。它已被成功地用于发现大量实际产品中的漏洞。有关原始项目的更多信息，请参阅原始文档：
 
-AFL is a popular fuzzing tool for coverage-guided fuzzing. The tool combines
-fast target execution with clever heuristics to find new execution paths in
-the target binary. It has been successfully used to find a large number of
-vulnerabilities in real products. For more info about the original project,
-please refer to the original documentation at:
+http://lcamt​​uf.coredump.cx/afl/
 
-http://lcamtuf.coredump.cx/afl/
+不幸的是，由于非常特殊的nix设计（例如，仪器，叉式服务器等），原来的AFL在Windows上不起作用。这个项目是AFL的一个分支，它使用不同的仪器方法，即使在黑盒二进制模糊化的情况下也能在Windows上工作。
 
-Unfortunately, the original AFL does not work on Windows due to very
-*nix-specific design (e.g. instrumentation, forkserver etc). This project is
-a fork of AFL that uses different instrumentation approach which works on
-Windows even for black box binary fuzzing.
+WinAFL方法
 
-## The WinAFL approach
+WinAFL不是在编译时使用代码，而是依靠使用DynamoRIO（http://dynamorio.org/）的动态工具来测量和提取目标覆盖率。已经发现，与原始执行速度相比，该方法引入了大约2倍的开销，这与在二进制仪器模式下的原始AFL相当。
 
-Instead of instrumenting the code at compilation time, WinAFL relies on dynamic
-instrumentation using DynamoRIO (http://dynamorio.org/) to measure and extract
-target coverage. This approach has been found to introduce an overhead about 2x
-compared to the native execution speed, which is comparable to the original AFL
-in binary instrumentation mode.
+AFL-fuzz.exe
 
-<p align="center">
-<img alt="afl-fuzz.exe" src="screenshots/afl-fuzz.gif"/>
-</p>
+为了提高进程启动时间，WinAFL在很大程度上依赖于持久性模糊模式，即执行多个输入采样而不重新启动目标进程。这是通过选择一个目标函数（用户想要模糊）并对其进行测试以使其运行在一个循环中来完成的。
 
-To improve the process startup time, WinAFL relies heavily on persistent
-fuzzing mode, that is, executing multiple input samples without restarting the
-target process. This is accomplished by selecting a target function (that the
-user wants to fuzz) and instrumenting it so that it runs in a loop.
+WinAFL已成功用于识别Windows软件中的错误，例如
 
-WinAFL has been successfully used to identify bugs in Windows software, such as
+CVE-2016-7212 - 由Noser Engineering AG的Aral Yaman发现
+CVE-2017-0073，CVE-2017-0190，CVE-2017-11816 - 由SensePost的Symeon Paraschoudis发现
+（让我知道，如果你知道其他人，我会把他们列入清单）
 
- * CVE-2016-7212 - found by Aral Yaman of Noser Engineering AG
- * CVE-2017-0073, CVE-2017-0190, CVE-2017-11816 - found by [Symeon Paraschoudis](https://twitter.com/symeonp) of SensePost
- 
-(Let me know if you know of any others and I'll include them in the list)
+构建WinAFL
 
-## Building WinAFL
+从https://github.com/DynamoRIO/dynamorio/wiki/Downloads下载并构建DynamoRIO源代码或下载DynamoRIO Windows二进制包
 
-1. Download and build DynamoRIO sources or download DynamoRIO Windows binary
-package from https://github.com/DynamoRIO/dynamorio/wiki/Downloads
+打开Visual Studio命令提示符（或Visual Studio x64 Win64命令提示符，如果您想要一个64位版本）。请注意，如果您正在对64位目标进行模糊处理，则需要64位winafl.dll版本，反之亦然。
 
-2. Open Visual Studio Command Prompt (or Visual Studio x64 Win64 Command Prompt
-if you want a 64-bit build). Note that you need a 64-bit winafl.dll build if
-you are fuzzing 64-bit targets and vice versa.
+转到包含源的目录
 
-3. Go to the directory containing the source
+输入以下命令。修改-DDynamoRIO_DIR标志以指向DynamoRIO cmake文件的位置（完整路径或相对于源目录）。
 
-4. Type the following commands. Modify the -DDynamoRIO_DIR flag to point to the
-location of your DynamoRIO cmake files (either full path or relative to the
-source directory).
+对于32位版本：
 
-### For a 32-bit build:
-
-```
 mkdir build32
 cd build32
 cmake .. -DDynamoRIO_DIR=..\path\to\DynamoRIO\cmake
 cmake --build . --config Release
-```
+对于64位版本：
 
-### For a 64-bit build:
-
-```
 mkdir build64
 cd build64
 cmake -G"Visual Studio 10 Win64" .. -DDynamoRIO_DIR=..\path\to\DynamoRIO\cmake
 cmake --build . --config Release
-```
+使用WinAFL
 
-## Using WinAFL
+注意：如果您使用的是预构建的二进制文件，您需要从https://github.com/DynamoRIO/dynamorio/wiki/Downloads下载DynamoRIO版本6.2.0-2 。如果您从源代码构建WinAFL，则可以使用您用来构建WinAFL的任何版本的DynamoRIO。
 
-Note: If you are using pre-built binaries you'll need to download DynamoRIO
-release 6.2.0-2 from https://github.com/DynamoRIO/dynamorio/wiki/Downloads.
-If you built WinAFL from source, you can use whatever version of DynamoRIO
-you used to build WinAFL.
+Windows上的afl-fuzz命令行与Linux上的不同。代替：
 
-The command line for afl-fuzz on Windows is different than on Linux. Instead of:
-
-```
 %s [ afl options ] -- target_cmd_line
-```
+现在看起来像这样：
 
-it now looks like this:
-
-```
 afl-fuzz [afl options] -- [instrumentation options] -- target_cmd_line
-```
+支持以下afl-fuzz选项：
 
-The following afl-fuzz options are supported:
-
-```
   -i dir        - input directory with test cases
   -o dir        - output directory for fuzzer findings
   -D dir        - directory containing DynamoRIO binaries (drrun, drconfig)
@@ -122,13 +81,10 @@ The following afl-fuzz options are supported:
   -M \\ -S id   - distributed mode
   -x dir        - optional fuzzer dictionary
   -m limit      - memory limit for the target process
-```
+有关这些标志的更多信息，请参阅原始的AFL文档。
 
-Please refer to the original AFL documentation for more info on these flags.
+以下使用仪器选项：
 
-The following instrumentation options are used:
-
-```
   -covtype         - the type of coverage being recorded. Supported options are
                      bb (basic block, default) or edge.
 
@@ -169,119 +125,66 @@ The following instrumentation options are used:
 
   -thread_coverage - If set, WinAFL will only collect coverage from a thread
                      that executed the target function
-```
+一般来说，在模糊一个新的目标时，你应该执行以下步骤：
 
-In general, you should perform the following steps when fuzzing a new target:
+确保您的目标没有仪器正确运行。
 
-1. Make sure your target is running correctly without instrumentations.
+在WinDbg中打开目标二进制文件，找到你想要模糊的函数。注意功能从模块开始的偏移量。例如，如果您想模糊主要功能，并碰巧有符号，可以使用下面的windbg命令：
 
-2. Open the target binary in WinDbg and locate the function you want to fuzz.
-Note the offset of the function from the start of the module. For example, if
-you want to fuzz the main function and happen to have symbols around, you can
-use the following windbg command:
-
-```
 x test!main
-```
+确保目标在DynamoRIO下正确运行。为此，您可以使用不需要连接到afl-fuzz的WinAFL客户端的独立调试模式。确保使用与您的目标相对应的drrun.exe和winafl.dll版本（32位与64位）。
+示例命令行：
 
-3. Make sure that the target is running correctly under DynamoRIO. For this
-purpose you can use the standalone debug mode of WinAFL client which does not
-require connecting to afl-fuzz. Make sure you use the drrun.exe and winafl.dll
-version which corresponds to your target (32 vs. 64 bit).
-
-Example command line:
-
-```
 path\to\DynamoRIO\bin64\drrun.exe -c winafl.dll -debug
 -target_module test_gdiplus.exe -target_offset 0x1270 -fuzz_iterations 10
 -nargs 2 -- test_gdiplus.exe input.bmp
-```
+您应该看到与您的目标函数运行10次相对应的输出，之后目标可执行文件将退出。应该在当前目录中创建一个.log文件。日志文件包含有用的信息，如目标加载的文件和模块以及AFL覆盖图的转储。在日志中，您应该看到pre_fuzz_handler和post_fuzz_handler正好运行了10次，并且您的输入文件在每次迭代中都处于打开状态。记下用于设置-coverage_module标志的已加载模块的列表。请注意，您必须在日志文件中使用与模块名称相同的值（不区分大小写）。
 
-You should see the output corresponding to your target function being run 10
-times after which the target executable will exit. A .log file should be
-created in the current directory. The log file contains useful information
-such as the files and modules loaded by the target as well as the dump of AFL
-coverage map. In the log you should see pre_fuzz_handler and post_fuzz_handler
-being run exactly 10 times as well as your input file being open in each
-iteration. Note the list of loaded modules for setting the -coverage_module
-flag. Note that you must use the same values for module names as seen in the
-log file (not case sensitive).
-
-4. Now you should be ready to fuzz the target. First, make sure that both
-afl-fuzz.exe and winafl.dll are in the current directory. As stated earlier,
-the command line for afl-fuzz on Windows is:
-
-```
+现在你应该准备好模糊目标。首先，确保afl-fuzz.exe和winafl.dll都在当前目录中。如前所述，Windows上afl-fuzz的命令行是：
 afl-fuzz [afl options] -- [instrumentation options] -- target_cmd_line
-```
+请参阅上面的支持AFL和仪器选项列表。
 
-Please refer above for the list of supported AFL and instrumentation options.
+在AFL选项中，您必须通过新的-D选项指定DynamoRIO二进制文件目录。您需要将DynamoRIO和winafl.dll构建（32与64位）匹配到目标二进制文件。-t（超时）选项对于WinAFL来说是强制性的，因为执行时间可能在仪器使用方面有很大的不同，所以依靠自动确定的值并不是一个好主意。
 
-In AFL options, you must specify the DynamoRIO binaries directory via the new
--D option. You need to match the DynamoRIO and winafl.dll build (32 vs. 64 bit)
-to the target binary. -t (timeout) option is mandatory for WinAFL as execution
-time can vary significantly under instrumentation so it's not a good idea to
-rely on the auto-determined values.
+您可以使用与步骤2中相同的WinAFL选项，但请记住排除-debug标志，您可能需要增加迭代计数。
 
-You can use the same WinAFL options as in step 2 but remember to exclude the
--debug flag and you'll probably want to increase the iteration count.
+和Linux中的afl-fuzz一样，你可以用@@替换目标二进制文件的输入文件参数。
 
-As in afl-fuzz on Linux you can replace the input file parameter of the target
-binary with @@.
+示例命令行如下所示：
 
-An example command line would look like:
-
-```
 afl-fuzz.exe -i in -o out -D C:\work\winafl\DynamoRIO\bin64 -t 20000 --
 -coverage_module gdiplus.dll -coverage_module WindowsCodecs.dll
 -fuzz_iterations 5000 -target_module test_gdiplus.exe -target_offset 0x1270
 -nargs 2 -- test_gdiplus.exe @@
-```
+或者，如果test_gdiplus.exe的符号可用，则可以使用-target_method而不是-target_offset，如下所示：
 
-Alternately, if symbols for test_gdiplus.exe are available, you can use
--target_method instead of -target_offset like so:
-
-```
 afl-fuzz.exe -i in -o out -D C:\work\winafl\DynamoRIO\bin64 -t 20000 --
 -coverage_module gdiplus.dll -coverage_module WindowsCodecs.dll
 -fuzz_iterations 5000 -target_module test_gdiplus.exe -target_method main
 -nargs 2 -- test_gdiplus.exe @@
-```
+而已。快乐fuzzing！
 
-That's it. Happy fuzzing!
+我的目标如何在WinAFL下运行
 
-## How does my target run under WinAFL
+当你选择一个目标函数和模糊应用程序时，会发生以下情况：
 
-When you select a target function and fuzz an application the following happens:
+你的目标正常运行，直到你的目标函数达到。
+WinAFL开始记录报道
+你的目标函数运行直到返回
+WinAFL报告覆盖范围，重写输入文件和修补程序EIP，以便执行跳回步骤2
+目标函数运行达到指定的迭代次数后，目标进程将被终止并重新启动。请注意，在目标函数返回后运行的任何内容都不会到达。
+如何选择一个目标函数
 
-1. Your target runs normally until your target function is reached.
-2. WinAFL starts recording coverage
-3. Your target function runs until return
-4. WinAFL reports coverage, rewrites the input file and patches EIP
-   so that the execution jumps back to step 2
-5. After your target function runs for the specified number of iterations,
-   the target process is killed and restarted. Note that anything that runs
-   after the target function returns is never reached.
+目标函数应该在其生命周期中做这些事情：
 
-## How to select a target function
+打开输入文件。这需要与目标函数一起发生，以便您可以在每个迭代中读取一个新的输入文件，因为输入文件在目标函数运行之间被重写）。
+解析它（这样就可以测量文件解析的覆盖率）
+关闭输入文件。这很重要，因为如果输入文件没有关闭，WinAFL将不能重写它。
+正常返回（所以WinAFL可以“捕获”这个返回和重定向执行，通过ExitProcess（）等“返回”将不起作用）
+语料库最小化
 
-The target function should do these things during its lifetime:
+WinAFL包含winafl-cmin.py中的afl-cmin的Windows端口。请运行以下命令查看选项和用法示例：
 
-1. Open the input file. This needs to happen withing the target function so
-   that you can read a new input file for each iteration as the input file is
-   rewritten between target function runs).
-2. Parse it (so that you can measure coverage of file parsing)
-3. Close the input file. This is important because if the input file is
-   not closed WinAFL won't be able to rewrite it.
-4. Return normally (So that WinAFL can "catch" this return and redirect
-   execution. "returning" via ExitProcess() and such won't work)
-
-## Corpus minimization
-
-WinAFL includes the windows port of afl-cmin in winafl-cmin.py. Please run the
-below command to see the options and usage examples:
-
-```
 D:\Codes\winafl>python winafl-cmin.py -h
 [...]
 Examples of use:
@@ -299,80 +202,53 @@ Examples of use:
 
  * Typical use with static instrumentation
    winafl-cmin.py -Y -t 100000 -i in -o minset -- test.exe @@
-```
+winafl-cmin.py
 
-<p align="center">
-<img alt="winafl-cmin.py" src="screenshots/winafl-cmin.py.png"/>
-</p>
+通过syzygy静态工具二进制
 
-## Statically instrument a binary via [syzygy](https://github.com/google/syzygy)
+背景
 
-### Background
+syzygy提供了一个能够以 完整的PDB 分解 PE32二进制文件的框架。分解一个二进制是用来表示接收输入一个PE32二进制和它的PDB，分析和分解每一个功能，每一个代码/数据块以安全的方式，并将其呈现给变换“通过”。转换过程是一个以某种方式转换二进制的类; 例如，syzyasan 转换就是一个例子。一旦通道转换了二进制文件，它就会将其传回到能够重新链接输出二进制文件的框架（当然，应用了转换）。
 
-[syzygy](https://github.com/google/syzygy) provides a framework able to _decompose_
-PE32 binaries with full PDB. _Decomposing_ a binary is the term used to mean taking
-in input a PE32 binary and its PDB, analyze and decompose every functions, every blocks
-of code / data in a safe way and present it to transformation "passes".
-A transformation pass is a class that transforms the binary in some way; an example is the [syzyasan](https://github.com/google/syzygy/blob/master/syzygy/instrument/transforms/asan_transform.h)
-transformation for example. Once the pass has transformed the binary, it passes it back
-to the framework which is able to _relink_ an output binary (with the transformations applied
-of course).
+AFL仪器已经被添加到syzygy的instrumenter允许用户静态仪器私人符号PE32二进制文件。
 
-[AFL instrumentation](https://github.com/google/syzygy/blob/master/syzygy/instrument/transforms/afl_transform.cc) has been added to [syzygy](https://github.com/google/syzygy)'s instrumenter allowing users to instrument PE32
-binaries with private symbols statically.
+在IDA下的afl仪器
 
-<p align="center">
-<img alt="afl instrumentation under IDA" src="screenshots/afl-instr.png"/>
-</p>
+如何编写目标函数
 
-### How to write a target function
+为了准备你的目标，你需要先包含afl-staticinstr.h然后__afl_persistent_loop像在test_static.cpp：
 
-In order to prepare your target, you need to first include `afl-staticinstr.h` then invoke `__afl_persistent_loop` like in `test_static.cpp`:
-
-```
 int fuzz(int argc, char**argv) {
   while(__afl_persistent_loop()) {
     test(argc, argv);
   }
   return 1;
 }
-```
+__afl_persistent_loop的实现生活中afl-staticinstr.c，基本上再现了什么DynamoRIO插件正在做pre_fuzz_handler和post_fuzz_handler。“如何选择目标函数”中提到的每个点也适用于此。
 
-`__afl_persistent_loop`'s implementation lives inside `afl-staticinstr.c` and basically reproduces what the DynamoRIO plugin is doing in `pre_fuzz_handler` and `post_fuzz_handler`. Every points mentioned in "How to select a target function" applies here too.
+您可以使用该标志调用AFL工具，-Y以便在模糊，语料库最小化或测试用例最小化期间​​启用静态检测模式：
 
-You can invoke AFL tools with the flag `-Y` to enable the static instrumentation mode during fuzzing, corpus minimizing or during test-case minimizing:
-
-```
 afl-fuzz.exe -Y -i minset -o o1 -t 10000 -- -fuzz_iterations 5000 -- test_static.instr.exe @@
 winafl-cmin.py -Y -t 100000 -i in -o minset -- test_static.instr.exe @@
 afl-tmin.exe -Y -i ..\testcases\tests\big.txt -o big.min.txt -- test_static.instr.exe @@
-```
+建立instrument.exe
 
-### Building instrument.exe
+为了方便起见，bin32目录中包含了确认可以与WinAFL一起使用的instrument.exe版本。如果你想自己建立它，请按照下面的说明。
 
-For convenience, a version of instrument.exe confirmed to work with WinAFL is included in the bin32 directory. If you want to build it yourself follow the instructions below.
+为了克隆syzygy的仓库，你可以按照这里列出的说明：SyzygyDevelopmentGuide。一旦你拥有depot_tools和存储库克隆，你可以像这样编译instrument.exe：
 
-In order to clone [syzygy](https://github.com/google/syzygy/)'s repository you can follow the instructions outlined here: [SyzygyDevelopmentGuide](https://github.com/google/syzygy/wiki/SyzygyDevelopmentGuide). Once you have `depot_tools` and the repository cloned, you can compile instrument.exe like this:
-
-```
 C:\syzygy\src>ninja -C out\Release instrument
-```
+目前推荐的修订版本是190dbfe（v0.8.32.0）。
 
-The current recommended revision of the instrumenter is the following: [190dbfe](https://github.com/google/syzygy/commit/190dbfe74c6f5b5913820fa66d9176877924d7c5)(v0.8.32.0).
+注册msdia140
 
-### Registering msdia140
+msdia140.dll通过执行以下命令，确保在您的系统上注册：
 
-Make sure to register `msdia140.dll` on your system by executing once the below command:
-
-```
 regsvr32 /s msdia140.dll
-```
+测试一个目标
 
-### Instrumenting a target
+您的目标二进制文件必须使用/ PROFILE连接器标志进行编译，以生成完整的PDB。
 
-Your target binary must have been compiled with the [/PROFILE](https://msdn.microsoft.com/en-us/library/ays5x7b0.aspx) linker flag in order to generate a full PDB.
-
-```
 C:\>instrument.exe --mode=afl --input-image=test_static.exe --output-image=test_static.instr.exe --force-decompose --multithread --cookie-check-hook
 [0718/224840:INFO:application_impl.h(46)] Syzygy Instrumenter Version 0.8.32.0 (0000000).
 [0718/224840:INFO:application_impl.h(48)] Copyright (c) Google Inc. All rights reserved.
@@ -394,47 +270,32 @@ Based on WinAFL by <ifratric@google.com>
 [-] Not running under afl-fuzz.exe.
 [+] Enabling the no fuzzing mode.
 Error opening file
-```
+可用选项
 
-#### Available options
-
-```
 --config=<path>         Specifies a JSON file describing, either
                         a whitelist of functions to instrument or
                         a blacklist of functions to not instrument.
 --cookie-check-hook     Hooks __security_cookie_check.
 --force-decompose       Forces block decomposition.
 --multithread           Uses a thread-safe instrumentation.
-```
+config：JSON文件允许您将检测范围缩小到一组函数名称。您可以使用白名单或黑名单功能。将黑名单函数生成可变行为可能非常有用。
 
-* config: The JSON file allows you to scope down the instrumentation to a set of function
-names. You can either [white list](https://github.com/google/syzygy/blob/master/syzygy/instrument/test_data/afl-good-whitelist.json), or [black list](https://github.com/google/syzygy/blob/master/syzygy/instrument/test_data/afl-good-blacklist.json) functions. It can be very useful to blacklist
-functions generating variable behaviors.
+cookie-check-hook：这可以确保/ GS cookie检查函数生成我们的VEH可以捕获的异常。Failfast异常不能被任何EH机制in-proc 捕获，所以我们利用 syzygy来重写cookie检查函数，以便产生 一个我们可以捕获的异常。
 
-* cookie-check-hook: This ensures that the /GS cookie check function generates an exception that
-our [VEH](https://msdn.microsoft.com/en-us/library/windows/desktop/ms681420(v=vs.85).aspx) can catch. Failfast exceptions are not catchable by any EH mechanisms in-proc, so we leverage
-[syzygy](https://github.com/google/syzygy) to rewrite the cookie check function in order to generate
-[an exception we can catch](https://github.com/google/syzygy/blob/master/syzygy/instrument/transforms/security_cookie_check_hook_transform.cc#L81).
+force-decompose：这个开关允许你重写syzygy在评估一个函数是否安全分解的时候做出的决定。如果你打开这个标志，你的仪器覆盖率将会更高，但是你最终可能会以一种奇怪的方式崩溃。只有在你知道你在做什么的情况下才能使用。
 
-* force-decompose: This switch lets you override the decision that [syzygy](https://github.com/google/syzygy/blob/master/syzygy/pe/pe_transform_policy.cc#L175) makes when evaluating
-if a function is safe to decompose. If you turn on this flag, your instrumentation coverage will be
-higher but you might end-up in an executable that *crashes* in weird ways. Only use if you know what you
-are doing.
+多线程：此开关打开线程安全的仪器。与单线程仪器的主要区别在于__afl_prev_loc将存储在TLS插槽中。
 
-* multithread: This switch turns on the thread-safe instrumentation. The major difference with the single
-thread instrumentation is that `__afl_prev_loc` will be stored in a TLS slot.
+限制
 
-### Limitations
+拥有巨大的权力是很重要的责任，所以这里是限制的列表：
 
-With great power comes great responsibility, so here is the list of limitations:
+仪表仅限于具有完整PDB符号的PE 32位二进制文​​件（链接器标志/PROFILE）。
 
-1. Instrumentation is limited to PE 32bits binaries with full PDB symbols (linker flag `/PROFILE`).
+syzygy定义了能够安全地分解块的几个前提条件 ; 这也许可以解释为什么你的仪表比例很低。
 
-2. [syzygy](https://github.com/google/syzygy/) defines [several pre-requirements](https://github.com/google/syzygy/blob/master/syzygy/pe/pe_transform_policy.cc#L175) for being able to decompose safely a block; this might explain why your instrumentation percentage is low.
+常问问题
 
-## FAQ
-
-```
 Q: WinAFL reports timeouts while processing initial testcases.
 A: You should run your target in debug mode first (-debug flag) and only
    run WinAFL once you get a message in the debug log that everything
@@ -464,9 +325,3 @@ A: Yes, provided that
  - The target function runs and returns without user interaction
  If these conditions are not satisfied, you might need to make custom changes
  to WinAFL and/or your target.
-```
-
-## Special Thanks
-
-Special thanks to Axel "[0vercl0k](https://twitter.com/0vercl0k)" Souchet of MSRC Vulnerabilities and
-Mitigations Team for his contributions!
